@@ -1,0 +1,37 @@
+name: joint_expenses
+description: "Joint Expenses – shared household income and expense tracker for two."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^16.0.0
+
+  # Backend
+  supabase_flutter: ^2.9.0
+
+  # Charts
+  fl_chart: ^1.0.0
+
+  # Utilities
+  intl: ^0.20.2
+  shared_preferences: ^2.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
