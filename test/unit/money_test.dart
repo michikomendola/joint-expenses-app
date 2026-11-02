@@ -108,6 +108,10 @@ void main() {
         CurrencyFormatter.formatSigned(Money.parse('1200'), currency: 'PHP', isIncome: false),
         '- ₱1,200.00',
       );
+      expect(
+        CurrencyFormatter.formatSigned(Money.parse('-80'), currency: 'PHP', isIncome: false),
+        '+ ₱80.00',
+      );
     });
 
     test('compact format', () {

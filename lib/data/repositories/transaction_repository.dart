@@ -15,7 +15,8 @@ class TransactionRepository {
   final SupabaseClient _client;
 
   static const String _select =
-      '*, category:categories(*), profile:profiles(display_name)';
+      '*, category:categories(*), profile:profiles!user_id(display_name), '
+      'assigned_profile:profiles!assigned_user_id(display_name)';
 
   /// Transactions for a household, newest first. When [month] is null all
   /// records are returned (capped by [limit]).
@@ -56,10 +57,14 @@ class TransactionRepository {
     return TransactionModel.fromJson(row);
   }
 
-  Future<TransactionModel> update(String id, TransactionInput input) async {
+  Future<TransactionModel> update(
+    String id,
+    TransactionInput input, {
+    required String userId,
+  }) async {
     final row = await _client
         .from('transactions')
-        .update(input.toJson())
+        .update(input.toJson(userId: userId))
         .eq('id', id)
         .select(_select)
         .single();
@@ -68,5 +73,15 @@ class TransactionRepository {
 
   Future<void> delete(String id) async {
     await _client.from('transactions').delete().eq('id', id);
+  }
+
+  Future<TransactionModel> setJointPaid(String id, {required bool paid}) async {
+    final row = await _client
+        .from('transactions')
+        .update({'joint_paid_at': paid ? DateTime.now().toUtc().toIso8601String() : null})
+        .eq('id', id)
+        .select(_select)
+        .single();
+    return TransactionModel.fromJson(row);
   }
 }

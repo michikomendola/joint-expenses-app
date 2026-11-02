@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joint_expenses/core/utils/date_utils.dart';
+import 'package:joint_expenses/data/models/expense_scope.dart';
 import 'package:joint_expenses/data/models/transaction_type.dart';
 import 'package:joint_expenses/features/transactions/domain/transaction_filter.dart';
 
@@ -52,6 +53,36 @@ void main() {
       expect(const TransactionFilter(query: 'RENT').apply(all).single.id, 't3');
       expect(const TransactionFilter(query: 'alex').apply(all).length, 3);
       expect(const TransactionFilter(query: 'zzz').apply(all), isEmpty);
+    });
+
+    test('paid filter keeps only paid joint expenses', () {
+      final paid = Fixtures.tx(
+        id: 'paid',
+        userId: Fixtures.user1,
+        category: Fixtures.rent,
+        amount: '100',
+        date: Fixtures.nov5,
+        expenseScope: ExpenseScope.joint,
+        jointPaidAt: DateTime(2026, 11, 6),
+      );
+      final unpaid = Fixtures.tx(
+        id: 'unpaid',
+        userId: Fixtures.user1,
+        category: Fixtures.food,
+        amount: '50',
+        date: Fixtures.nov5,
+        expenseScope: ExpenseScope.joint,
+      );
+      final rows = [...all, paid, unpaid];
+
+      expect(
+        const TransactionFilter(jointPaid: JointPaidFilter.paid).apply(rows).map((t) => t.id),
+        ['paid'],
+      );
+      expect(
+        const TransactionFilter(jointPaid: JointPaidFilter.unpaid).apply(rows).map((t) => t.id),
+        ['unpaid'],
+      );
     });
 
     test('hasActiveFilters ignores month and sort', () {

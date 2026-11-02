@@ -6,6 +6,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/routing/app_routes.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/animated_entrance.dart';
+import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/month_picker.dart';
 import '../../../core/widgets/skeleton.dart';
@@ -15,12 +16,20 @@ import '../../../data/services/realtime_sync.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../households/application/household_providers.dart';
 import '../../transactions/application/transaction_providers.dart';
+import '../../transactions/presentation/transaction_actions.dart';
 import '../../transactions/presentation/transaction_detail_sheet.dart';
 import '../../transactions/presentation/transaction_form_sheet.dart';
 import '../../transactions/presentation/widgets/transaction_tile.dart';
 import '../application/dashboard_providers.dart';
+import '../application/joint_budget_providers.dart';
 import '../domain/dashboard_summary.dart';
+import '../domain/home_account_view.dart';
+import '../domain/joint_budget.dart';
+import 'share_deficit_sheet.dart';
+import 'widgets/account_view_button.dart';
 import 'widgets/balance_card.dart';
+import 'widgets/joint_leftover_card.dart';
+import 'widgets/shared_deficit_tile.dart';
 import 'widgets/spending_breakdown_card.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -28,10 +37,11 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final summary = ref.watch(dashboardSummaryProvider);
+    final summary = ref.watch(homeSummaryProvider);
+    final accountView = ref.watch(homeAccountViewProvider);
+    final leftover = ref.watch(jointBudgetProvider);
     final month = ref.watch(selectedMonthProvider);
     final currency = ref.watch(currencyProvider);
-    final household = ref.watch(currentHouseholdProvider).value;
     final profile = ref.watch(currentProfileProvider).value;
     final userId = ref.watch(currentUserIdProvider);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -42,7 +52,11 @@ class DashboardScreen extends ConsumerWidget {
         child: RefreshIndicator.adaptive(
           onRefresh: () async {
             refreshHouseholdData(ref);
-            await ref.read(monthTransactionsProvider(month).future);
+            await Future.wait([
+              ref.read(monthTransactionsProvider(month).future),
+              ref.read(monthTransactionsProvider(null).future),
+              ref.read(jointBudgetSharesProvider.future),
+            ]);
           },
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
@@ -61,13 +75,9 @@ class DashboardScreen extends ConsumerWidget {
                     _Header(
                       greeting: AppDateUtils.greeting(),
                       name: profile?.displayName,
-                      householdName: household?.name ?? '',
                       month: month,
-                      onMonthChanged: (value) {
-                        if (value != null) {
-                          ref.read(selectedMonthProvider.notifier).select(value);
-                        }
-                      },
+                      onMonthChanged: (value) =>
+                          ref.read(selectedMonthProvider.notifier).select(value),
                     ),
                     const SizedBox(height: AppConstants.spaceMd),
                     summary.when(
@@ -80,9 +90,12 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                       data: (data) => _DashboardBody(
                         summary: data,
+                        leftover: leftover.valueOrNull ?? JointBudget.empty,
+                        leftoverLoading: leftover.isLoading && !leftover.hasValue,
                         currency: currency,
                         month: month,
                         userId: userId,
+                        view: accountView,
                       ),
                     ),
                   ]),
@@ -100,15 +113,13 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.greeting,
     required this.name,
-    required this.householdName,
     required this.month,
     required this.onMonthChanged,
   });
 
   final String greeting;
   final String? name;
-  final String householdName;
-  final YearMonth month;
+  final YearMonth? month;
   final ValueChanged<YearMonth?> onMonthChanged;
 
   @override
@@ -131,19 +142,19 @@ class _Header extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
-              Text(
-                householdName.isEmpty ? 'Our Finances' : householdName,
-                style: theme.textTheme.headlineSmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              const AccountViewButton(),
             ],
           ),
         ),
         const SizedBox(width: AppConstants.spaceSm),
         Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: MonthChip(value: month, onChanged: onMonthChanged, compact: true),
+          child: MonthChip(
+            value: month,
+            allowAll: true,
+            onChanged: onMonthChanged,
+            compact: true,
+          ),
         ),
       ],
     );
@@ -153,30 +164,64 @@ class _Header extends StatelessWidget {
 class _DashboardBody extends ConsumerWidget {
   const _DashboardBody({
     required this.summary,
+    required this.leftover,
+    required this.leftoverLoading,
     required this.currency,
     required this.month,
     required this.userId,
+    required this.view,
   });
 
   final DashboardSummary summary;
+  final JointBudget leftover;
+  final bool leftoverLoading;
   final String currency;
-  final YearMonth month;
+  final YearMonth? month;
   final String? userId;
+  final HomeAccountView view;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final periodLabel = month.isCurrent ? 'This month' : month.shortLabel;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AnimatedEntrance(
-          child: BalanceCard(
-            summary: summary,
-            currency: currency,
-            periodLabel: periodLabel,
+        if (view == HomeAccountView.joint)
+          AnimatedEntrance(
+            child: leftoverLoading
+                ? const SkeletonCard(height: 190)
+                : JointLeftoverCard(
+                    budget: leftover,
+                    currency: currency,
+                    onShare: leftover.isOverspent
+                        ? () => ShareDeficitSheet.show(context, leftover)
+                        : null,
+                  ),
+          )
+        else
+          AnimatedEntrance(
+            child: PersonalLeftoverCard(
+              amount: leftover.personalLeftover,
+              currency: currency,
+              prominent: true,
+            ),
           ),
-        ),
+        if (view == HomeAccountView.joint && leftover.lastShare != null) ...[
+          const SizedBox(height: AppConstants.spaceMd),
+          AnimatedEntrance(
+            delay: const Duration(milliseconds: 50),
+            child: AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: SharedDeficitTile(
+                share: leftover.lastShare!,
+                currency: currency,
+                onTap: () => SharedDeficitDetailSheet.show(
+                  context,
+                  leftover.lastShare!,
+                ),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: AppConstants.spaceMd),
         AnimatedEntrance(
           delay: const Duration(milliseconds: 60),
@@ -250,17 +295,23 @@ class _DashboardBody extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(4, 0, 0, 4),
                 ),
                 if (summary.recent.isEmpty)
-                  EmptyState(
-                    compact: true,
-                    icon: Icons.receipt_long_rounded,
-                    title: month.isCurrent
-                        ? 'Nothing recorded yet'
-                        : 'No transactions in ${month.label}',
-                    message: month.isCurrent
-                        ? 'Tap + to add your first income or expense.'
-                        : 'Pick another month or add a transaction for this period.',
-                    actionLabel: 'Add transaction',
-                    onAction: () => TransactionFormSheet.show(context),
+                  Builder(
+                    builder: (context) {
+                      final period = month;
+                      final openPeriod = period == null || period.isCurrent;
+                      return EmptyState(
+                        compact: true,
+                        icon: Icons.receipt_long_rounded,
+                        title: openPeriod
+                            ? 'Nothing recorded yet'
+                            : 'No transactions in ${period.label}',
+                        message: openPeriod
+                            ? 'Tap + to add your first income or expense.'
+                            : 'Pick another month or add a transaction for this period.',
+                        actionLabel: 'Add transaction',
+                        onAction: () => TransactionFormSheet.show(context),
+                      );
+                    },
                   )
                 else
                   for (final t in summary.recent)
@@ -269,6 +320,31 @@ class _DashboardBody extends ConsumerWidget {
                       currency: currency,
                       showDate: true,
                       isMine: t.userId == userId,
+                      onTogglePaid: t.isJoint
+                          ? () async {
+                              final ok = await ref
+                                  .read(transactionControllerProvider.notifier)
+                                  .setJointPaid(t.id, paid: !t.isJointPaid);
+                              if (!context.mounted) return;
+                              if (!ok) {
+                                AppSnackBar.error(
+                                  context,
+                                  ref.read(transactionControllerProvider).error,
+                                );
+                              }
+                            }
+                          : null,
+                      onEdit: () => TransactionActions.edit(
+                        context,
+                        t,
+                        userId: userId,
+                      ),
+                      onDelete: () => TransactionActions.delete(
+                        context,
+                        ref,
+                        t,
+                        userId: userId,
+                      ),
                       onTap: () => TransactionDetailSheet.show(context, t),
                     ),
               ],
@@ -283,11 +359,13 @@ class _DashboardBody extends ConsumerWidget {
     ref.read(transactionFilterProvider.notifier).update(
           (f) => f.copyWith(
             month: month,
+            clearMonth: month == null,
             type: type,
             clearType: type == null,
             clearCategory: true,
             clearUser: true,
             query: '',
+            clearJointPaid: true,
           ),
         );
     context.go(AppRoutes.transactions);

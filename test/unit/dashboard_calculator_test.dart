@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joint_expenses/core/utils/money.dart';
+import 'package:joint_expenses/data/models/expense_scope.dart';
 import 'package:joint_expenses/features/dashboard/domain/dashboard_summary.dart';
 
 import '../helpers/fixtures.dart';
@@ -138,6 +139,44 @@ void main() {
       );
       expect(summary.expenseByCategory.first.name, 'Food & Drinks');
       expect(summary.expenseByCategory.first.colorHex, '#F97316');
+    });
+
+    test('TEST 10: joint expenses are counted once and not as personal', () {
+      final summary = DashboardCalculator.compute(
+        transactions: [
+          Fixtures.tx(
+            id: 'p1',
+            userId: Fixtures.user1,
+            category: Fixtures.food,
+            amount: '8000',
+            date: Fixtures.nov1,
+          ),
+          Fixtures.tx(
+            id: 'p2',
+            userId: Fixtures.user1,
+            category: Fixtures.food,
+            amount: '12000',
+            date: Fixtures.nov1,
+            assignedUserId: Fixtures.user2,
+          ),
+          Fixtures.tx(
+            id: 'j1',
+            userId: Fixtures.user1,
+            category: Fixtures.food,
+            amount: '15000',
+            date: Fixtures.nov1,
+            expenseScope: ExpenseScope.joint,
+            assignedUserId: null,
+          ),
+        ],
+        categories: Fixtures.categoryMap,
+        memberNames: Fixtures.memberNames,
+      );
+      expect(summary.totalExpense, Money.parse('35000'));
+      expect(summary.jointExpense, Money.parse('15000'));
+      final byId = {for (final m in summary.memberTotals) m.userId: m};
+      expect(byId[Fixtures.user1]!.expense, Money.parse('8000'));
+      expect(byId[Fixtures.user2]!.expense, Money.parse('12000'));
     });
 
     test('member totals include members with no transactions', () {

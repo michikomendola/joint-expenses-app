@@ -67,13 +67,14 @@ abstract final class Validators {
     return null;
   }
 
-  static String? amount(String? value) {
+  static String? amount(String? value, {bool allowNegative = false}) {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return 'Amount is required';
     final money = Money.tryParse(text);
     if (money == null) return 'Enter a valid amount';
-    if (!money.isPositive) return 'Amount must be greater than zero';
-    if (money.minor > AppConstants.maxAmountMinor) return 'Amount is too large';
+    if (money.isZero) return 'Amount must not be zero';
+    if (money.isNegative && !allowNegative) return 'Amount must be greater than zero';
+    if (money.abs.minor > AppConstants.maxAmountMinor) return 'Amount is too large';
     return null;
   }
 

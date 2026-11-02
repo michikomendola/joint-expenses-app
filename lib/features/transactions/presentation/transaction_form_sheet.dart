@@ -8,11 +8,14 @@ import '../../../core/utils/amount_input_formatter.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/money.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/category_icon_badge.dart';
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../data/models/category.dart';
+import '../../../data/models/expense_scope.dart';
+import '../../../data/models/payment_method.dart';
 import '../../../data/models/transaction.dart';
 import '../../../data/models/transaction_type.dart';
 import '../../authentication/application/auth_providers.dart';
@@ -62,9 +65,20 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
   late TransactionType _type;
   CategoryModel? _category;
   late DateTime _date;
+  late PaymentMethod _paymentMethod;
+  late ExpenseScope _expenseScope;
   bool _categoryTouched = false;
 
   bool get _isEditing => widget.existing != null;
+  bool _refund = false;
+
+  bool get _refundAmount => _type.isExpense && _refund;
+
+  void _onAmountEdited() {
+    final refund = _amount.text.trim().startsWith('-');
+    if (refund == _refund || !mounted) return;
+    setState(() => _refund = refund);
+  }
 
   @override
   void initState() {
@@ -73,10 +87,14 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
     _type = existing?.type ?? widget.initialType;
     _category = existing?.category;
     _date = existing?.transactionDate ?? AppDateUtils.today();
+    _paymentMethod = existing?.paymentMethod ?? PaymentMethod.cash;
+    _expenseScope = existing?.expenseScope ?? ExpenseScope.personal;
     _amount = TextEditingController(
       text: existing == null ? '' : existing.amount.toDecimalString().replaceAll('.00', ''),
     );
     _description = TextEditingController(text: existing?.description ?? '');
+    _refund = _amount.text.trim().startsWith('-');
+    _amount.addListener(_onAmountEdited);
     if (existing == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _amountFocus.requestFocus();
@@ -86,6 +104,7 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
 
   @override
   void dispose() {
+    _amount.removeListener(_onAmountEdited);
     _amount.dispose();
     _description.dispose();
     _amountFocus.dispose();
@@ -94,11 +113,30 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
 
   void _switchType(TransactionType type) {
     if (type == _type) return;
+    if (type.isIncome && _amount.text.trim().startsWith('-')) {
+      final stripped = _amount.text.trim().substring(1);
+      _amount.value = TextEditingValue(
+        text: stripped,
+        selection: TextSelection.collapsed(offset: stripped.length),
+      );
+    }
     setState(() {
       _type = type;
       _category = null; // categories are type-specific
       _categoryTouched = false;
+      // Keep Personal / Joint when switching types so a ₱15k joint contribution
+      // does not snap back to personal.
     });
+  }
+
+  void _toggleRefund() {
+    final text = _amount.text.trim();
+    final next = text.startsWith('-') ? text.substring(1) : '-$text';
+    _amount.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    _amountFocus.requestFocus();
   }
 
   Future<void> _pickCategory() async {
@@ -146,6 +184,8 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
       categoryId: _category!.id,
       transactionDate: _date,
       description: _description.text,
+      paymentMethod: _type.isExpense ? _paymentMethod : PaymentMethod.cash,
+      expenseScope: _expenseScope,
     );
 
     final controller = ref.read(transactionControllerProvider.notifier);
@@ -197,7 +237,7 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
     final saving = ref.watch(transactionControllerProvider).isLoading;
     final currency = ref.watch(currencyProvider);
     final profile = ref.watch(currentProfileProvider).value;
-    final accent = _type.isIncome ? colors.income : colors.expense;
+    final accent = _type.isIncome || _refundAmount ? colors.income : colors.expense;
     final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
     final maxHeight = MediaQuery.sizeOf(context).height * 0.92;
 
@@ -217,7 +257,7 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: SingleChildScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          padding: EdgeInsets.fromLTRB(20, 0, 20, sheetBottomPadding(context)),
           child: Form(
             key: _formKey,
             autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -257,8 +297,13 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
                 TextFormField(
                   controller: _amount,
                   focusNode: _amountFocus,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: const [AmountInputFormatter()],
+                  keyboardType: TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: _type.isExpense,
+                  ),
+                  inputFormatters: [
+                    AmountInputFormatter(allowNegative: _type.isExpense),
+                  ],
                   textInputAction: TextInputAction.next,
                   style: theme.textTheme.headlineMedium?.copyWith(color: accent),
                   decoration: InputDecoration(
@@ -266,17 +311,38 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
                     hintStyle: theme.textTheme.headlineMedium?.copyWith(
                       color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
                     ),
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.only(left: 16, right: 8),
-                      child: Text(
-                        CurrencyFormatter.symbol(currency),
-                        style: theme.textTheme.headlineSmall?.copyWith(color: accent),
-                      ),
+                    helperText: _type.isExpense
+                        ? 'Tap − for a refund or a cancelled charge.'
+                        : null,
+                    prefixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_type.isExpense)
+                          IconButton(
+                            tooltip: 'Refund or cancelled charge',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: saving ? null : _toggleRefund,
+                            icon: Icon(
+                              Icons.remove_rounded,
+                              color: _refundAmount ? colors.income : scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        Padding(
+                          padding: EdgeInsets.only(left: _type.isExpense ? 0 : 16, right: 8),
+                          child: Text(
+                            CurrencyFormatter.symbol(currency),
+                            style: theme.textTheme.headlineSmall?.copyWith(color: accent),
+                          ),
+                        ),
+                      ],
                     ),
                     prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                   ),
-                  validator: Validators.amount,
+                  validator: (value) => Validators.amount(
+                    value,
+                    allowNegative: _type.isExpense,
+                  ),
                 ),
                 const SizedBox(height: AppConstants.spaceMd),
 
@@ -350,7 +416,67 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
                 ),
                 const SizedBox(height: AppConstants.spaceMd),
 
-                // Paid by / Received by (always the signed-in user)
+                InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: _type.isIncome ? 'Income for' : 'Expense for',
+                    prefixIcon: const Icon(Icons.groups_outlined),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<ExpenseScope>(
+                      value: _expenseScope,
+                      isExpanded: true,
+                      items: const [
+                        DropdownMenuItem(
+                          value: ExpenseScope.personal,
+                          child: Text('Personal'),
+                        ),
+                        DropdownMenuItem(
+                          value: ExpenseScope.joint,
+                          child: Text('Joint'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setState(() => _expenseScope = value);
+                              }
+                            },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppConstants.spaceMd),
+                if (_type.isExpense) ...[
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Mode of payment',
+                      prefixIcon: Icon(Icons.payments_outlined),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<PaymentMethod>(
+                        value: _paymentMethod,
+                        isExpanded: true,
+                        items: [
+                          for (final method in PaymentMethod.values)
+                            DropdownMenuItem(
+                              value: method,
+                              child: Text(method.label),
+                            ),
+                        ],
+                        onChanged: saving
+                            ? null
+                            : (value) {
+                                if (value != null) {
+                                  setState(() => _paymentMethod = value);
+                                }
+                              },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.spaceMd),
+                ],
+
+                // Paid by stays the signed-in user; scope decides who the expense is for.
                 _FieldTile(
                   label: _type.actorLabel,
                   leading: CircleAvatar(
@@ -366,7 +492,13 @@ class _TransactionFormSheetState extends ConsumerState<TransactionFormSheet> {
                   value: _isEditing
                       ? (widget.existing!.userDisplayName ?? profile?.displayName ?? 'You')
                       : (profile?.displayName ?? 'You'),
-                  helper: 'Transactions are recorded under your own account.',
+                  helper: _type.isIncome
+                      ? (_expenseScope == ExpenseScope.joint
+                          ? 'This goes into the joint pot.'
+                          : 'Income is recorded under your own account.')
+                      : _expenseScope == ExpenseScope.joint
+                          ? 'You paid. This counts as a shared household expense.'
+                          : 'You paid. This counts as your personal expense.',
                 ),
                 const SizedBox(height: AppConstants.spaceLg),
 

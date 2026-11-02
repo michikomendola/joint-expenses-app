@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:joint_expenses/core/constants/app_env.dart';
 import 'package:joint_expenses/core/utils/date_utils.dart';
+import 'package:joint_expenses/data/models/household.dart';
 import 'package:joint_expenses/features/transactions/presentation/transaction_form_sheet.dart';
 import 'package:joint_expenses/features/transactions/presentation/widgets/transaction_tile.dart';
 import 'package:joint_expenses/main.dart' as app;
@@ -120,11 +121,11 @@ class _Backend {
         .eq('user_id', user2.auth.currentUser!.id)
         .maybeSingle();
     if (existing != null) return;
-    final invite = await user1.rpc<List<dynamic>>(
+    final invite = await user1.rpc(
       'create_household_invite',
       params: {'p_household_id': householdId},
     );
-    final code = (invite.first as Map<String, dynamic>)['code'] as String;
+    final code = HouseholdInvite.fromRpc(invite).code;
     await user2.rpc<Map<String, dynamic>>(
       'join_household_with_invite',
       params: {'p_code': code},

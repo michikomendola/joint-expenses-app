@@ -12,6 +12,8 @@ import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/households/application/household_providers.dart';
 import '../../features/households/presentation/household_setup_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
+import '../../features/statement_import/presentation/statement_review_screen.dart';
+import '../../features/statement_import/presentation/statement_upload_screen.dart';
 import '../../features/transactions/presentation/transactions_screen.dart';
 import '../constants/app_constants.dart';
 import 'app_routes.dart';
@@ -111,6 +113,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.onboarding,
         pageBuilder: (context, state) =>
             _fadePage(state, const HouseholdSetupScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.statementImport,
+        pageBuilder: (context, state) =>
+            _slidePage(state, const StatementUploadScreen()),
+        routes: [
+          GoRoute(
+            path: 'review',
+            pageBuilder: (context, state) =>
+                _slidePage(state, const StatementReviewScreen()),
+          ),
+        ],
       ),
       StatefulShellRoute(
         builder: (context, state, navigationShell) => navigationShell,

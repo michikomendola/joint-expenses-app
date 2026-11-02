@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joint_expenses/core/utils/date_utils.dart';
+import 'package:joint_expenses/data/models/expense_scope.dart';
 import 'package:joint_expenses/data/models/household.dart';
 import 'package:joint_expenses/data/models/transaction.dart';
 import 'package:joint_expenses/features/transactions/application/transaction_providers.dart';
@@ -47,23 +48,41 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> showPersonal(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('Switch account view'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Personal').last);
+    await tester.pumpAndSettle();
+  }
+
   group('TransactionsScreen', () {
-    testWidgets('groups transactions by date and shows meta', (tester) async {
+    testWidgets('joint view hides personal rows', (tester) async {
       await pump(tester);
 
-      expect(find.byType(TransactionTile), findsNWidgets(6));
-      expect(find.text('Groceries'), findsOneWidget);
-      expect(find.textContaining('Food & Drinks · Paid by You'), findsOneWidget);
-      expect(find.textContaining('Received by Alex'), findsOneWidget);
-      expect(find.text('+ ₱45,000.00'), findsOneWidget);
-      expect(find.text('- ₱10,000.00'), findsOneWidget);
+      expect(find.text('Joint account'), findsOneWidget);
+      expect(find.byType(TransactionTile), findsNothing);
+      expect(find.text('No joint transactions yet'), findsOneWidget);
+      expect(find.text('Groceries'), findsNothing);
+      expect(find.text('Grab'), findsNothing);
+    });
 
-      // Four distinct days → four headers (upper-cased).
-      expect(find.textContaining('NOV'), findsWidgets);
+    testWidgets('personal view shows only the signed-in user', (tester) async {
+      await pump(tester);
+      await showPersonal(tester);
+
+      expect(find.byType(TransactionTile), findsNWidgets(3));
+      expect(find.text('Groceries'), findsOneWidget);
+      expect(find.text('Rent'), findsOneWidget);
+      expect(find.text('+ ₱45,000.00'), findsWidgets);
+      expect(find.text('Grab'), findsNothing);
+      expect(find.text('Dinner'), findsNothing);
+      expect(find.text('+ ₱30,000.00'), findsNothing);
+      expect(find.textContaining('Food & Drinks · Personal · Cash · Paid by You'), findsOneWidget);
     });
 
     testWidgets('filters by type with chips', (tester) async {
       await pump(tester);
+      await showPersonal(tester);
 
       Future<void> tapChip(String label) async {
         final chip = find.widgetWithText(ChoiceChip, label);
@@ -74,26 +93,27 @@ void main() {
       }
 
       await tapChip('Income');
-      expect(find.byType(TransactionTile), findsNWidgets(2));
+      expect(find.byType(TransactionTile), findsOneWidget);
       expect(find.text('Groceries'), findsNothing);
 
       await tapChip('Expenses');
-      expect(find.byType(TransactionTile), findsNWidgets(4));
+      expect(find.byType(TransactionTile), findsNWidgets(2));
 
       await tapChip('All');
-      expect(find.byType(TransactionTile), findsNWidgets(6));
+      expect(find.byType(TransactionTile), findsNWidgets(3));
     });
 
     testWidgets('search narrows the list and can be cleared', (tester) async {
       await pump(tester);
+      await showPersonal(tester);
 
       await tester.tap(find.byTooltip('Search'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'grab');
+      await tester.enterText(find.byType(TextField), 'grocer');
       await tester.pumpAndSettle();
 
       expect(find.byType(TransactionTile), findsOneWidget);
-      expect(find.text('Grab'), findsOneWidget);
+      expect(find.text('Groceries'), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'nothing-here');
       await tester.pumpAndSettle();
@@ -101,14 +121,15 @@ void main() {
 
       await tester.tap(find.text('Clear filters'));
       await tester.pumpAndSettle();
-      expect(find.byType(TransactionTile), findsNWidgets(6));
+      expect(find.byType(TransactionTile), findsNWidgets(3));
     });
 
     testWidgets('toggles sort order', (tester) async {
       await pump(tester);
+      await showPersonal(tester);
 
       TransactionTile first() => tester.widget<TransactionTile>(find.byType(TransactionTile).first);
-      expect(first().transaction.id, 't6');
+      expect(first().transaction.id, 't4');
 
       await tester.tap(find.byTooltip('Newest first'));
       await tester.pumpAndSettle();
@@ -117,21 +138,40 @@ void main() {
 
     testWidgets('shows the empty state with a call to action', (tester) async {
       await pump(tester, transactions: const []);
-      expect(find.text('No transactions yet'), findsOneWidget);
+      expect(find.text('No joint transactions yet'), findsOneWidget);
       expect(find.text('Add transaction'), findsOneWidget);
     });
 
     testWidgets('tapping a row opens the detail sheet; only owner can edit', (tester) async {
-      await pump(tester);
+      await pump(
+        tester,
+        transactions: [
+          ...Fixtures.specExample(),
+          Fixtures.tx(
+            id: 'tj',
+            userId: Fixtures.user2,
+            category: Fixtures.rent,
+            amount: '8000',
+            date: Fixtures.nov12,
+            description: 'Utilities',
+            expenseScope: ExpenseScope.joint,
+          ),
+        ],
+      );
 
-      await tester.tap(find.text('Dinner')); // Alex's transaction
+      expect(find.text('Utilities'), findsOneWidget);
+      expect(find.text('Groceries'), findsNothing);
+
+      await tester.tap(find.text('Utilities'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Only Alex can edit'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Edit'), findsNothing);
-      await tester.tapAt(const Offset(10, 10)); // dismiss
+      await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Groceries')); // own transaction
+      await showPersonal(tester);
+      expect(find.text('Utilities'), findsNothing);
+      await tester.tap(find.text('Groceries'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(FilledButton, 'Edit'), findsOneWidget);
       expect(find.widgetWithText(OutlinedButton, 'Delete'), findsOneWidget);

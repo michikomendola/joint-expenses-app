@@ -18,13 +18,16 @@ void main() {
       expect(Validators.confirmPassword('abc', 'abc'), isNull);
     });
 
-    test('amount must be a positive decimal', () {
+    test('amount must be a non-zero decimal', () {
       expect(Validators.amount(''), 'Amount is required');
-      expect(Validators.amount('0'), 'Amount must be greater than zero');
+      expect(Validators.amount('0'), 'Amount must not be zero');
+      expect(Validators.amount('-12.30'), 'Amount must be greater than zero');
+      expect(Validators.amount('-12.30', allowNegative: true), isNull);
       expect(Validators.amount('abc'), 'Enter a valid amount');
       expect(Validators.amount('1.234'), 'Enter a valid amount');
       expect(Validators.amount('1500.50'), isNull);
       expect(Validators.amount('9999999999999'), 'Amount is too large');
+      expect(Validators.amount('-9999999999999', allowNegative: true), 'Amount is too large');
     });
 
     test('invite code must be 10 alphanumerics ignoring dashes', () {
@@ -76,6 +79,20 @@ void main() {
 
     test('limits integer digits', () {
       expect(apply('123456789012', '1234567890123').text, '123456789012');
+    });
+
+    test('keeps a leading minus only when negatives are allowed', () {
+      const signed = AmountInputFormatter(allowNegative: true);
+      TextEditingValue applySigned(String old, String next) => signed.formatEditUpdate(
+            TextEditingValue(text: old),
+            TextEditingValue(text: next, selection: TextSelection.collapsed(offset: next.length)),
+          );
+
+      expect(apply('12', '-12').text, '12');
+      expect(applySigned('', '-').text, '-');
+      expect(applySigned('-', '-12.5').text, '-12.5');
+      expect(applySigned('-12.5', '-12.50').text, '-12.50');
+      expect(applySigned('-', '-007').text, '-7');
     });
   });
 }

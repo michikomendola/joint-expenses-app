@@ -47,14 +47,11 @@ class HouseholdRepository {
   }
 
   Future<HouseholdInvite> createInvite(String householdId) async {
-    final rows = await _client.rpc<List<dynamic>>(
+    final raw = await _client.rpc(
       'create_household_invite',
       params: {'p_household_id': householdId},
     );
-    if (rows.isEmpty) {
-      throw const PostgrestException(message: 'Could not create an invite');
-    }
-    return HouseholdInvite.fromJson(rows.first as Map<String, dynamic>);
+    return HouseholdInvite.fromRpc(raw);
   }
 
   Future<List<HouseholdMember>> fetchMembers(String householdId) async {

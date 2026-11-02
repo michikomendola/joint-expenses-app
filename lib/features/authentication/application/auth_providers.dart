@@ -127,4 +127,10 @@ class AuthController extends AutoDisposeAsyncNotifier<void> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(_repo.signOut);
   }
+
+  Future<bool> deleteAccount() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(_repo.deleteAccount);
+    return !state.hasError;
+  }
 }

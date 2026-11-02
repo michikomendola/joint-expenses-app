@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/category_icon_badge.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../../data/models/category.dart';
@@ -145,7 +146,7 @@ class _CategoryPickerSheetState extends ConsumerState<CategoryPickerSheet> {
                   );
                 }
                 return GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, sheetBottomPadding(context, base: 24)),
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 96,
                     mainAxisSpacing: 12,

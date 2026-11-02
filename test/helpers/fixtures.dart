@@ -1,5 +1,6 @@
 import 'package:joint_expenses/core/utils/money.dart';
 import 'package:joint_expenses/data/models/category.dart';
+import 'package:joint_expenses/data/models/expense_scope.dart';
 import 'package:joint_expenses/data/models/household.dart';
 import 'package:joint_expenses/data/models/profile.dart';
 import 'package:joint_expenses/data/models/transaction.dart';
@@ -69,6 +70,9 @@ abstract final class Fixtures {
     required DateTime date,
     String? description,
     DateTime? createdAt,
+    ExpenseScope expenseScope = ExpenseScope.personal,
+    String? assignedUserId,
+    DateTime? jointPaidAt,
   }) {
     return TransactionModel(
       id: id,
@@ -82,6 +86,9 @@ abstract final class Fixtures {
       createdAt: createdAt ?? date,
       category: category,
       userDisplayName: memberNames[userId],
+      expenseScope: expenseScope,
+      assignedUserId: assignedUserId ?? (expenseScope == ExpenseScope.personal ? userId : null),
+      jointPaidAt: jointPaidAt,
     );
   }
 

@@ -1,12 +1,14 @@
 import 'package:flutter/services.dart';
 
-/// Restricts input to a positive decimal amount with at most two fraction
-/// digits and a sane integer length. Accepts both `.` and `,` as the decimal
-/// separator (the comma is normalised to a dot).
+/// Restricts input to a decimal amount with at most two fraction digits and
+/// a sane integer length. Accepts both `.` and `,` as the decimal separator
+/// (the comma is normalised to a dot). A leading minus is kept only when
+/// [allowNegative] is true, so an expense can record a refund.
 class AmountInputFormatter extends TextInputFormatter {
-  const AmountInputFormatter({this.maxIntegerDigits = 12});
+  const AmountInputFormatter({this.maxIntegerDigits = 12, this.allowNegative = false});
 
   final int maxIntegerDigits;
+  final bool allowNegative;
 
   @override
   TextEditingValue formatEditUpdate(
@@ -15,6 +17,20 @@ class AmountInputFormatter extends TextInputFormatter {
   ) {
     var text = newValue.text.replaceAll(',', '.');
     if (text.isEmpty) return newValue.copyWith(text: '');
+
+    var negative = false;
+    if (text.startsWith('-')) {
+      if (!allowNegative) return oldValue;
+      negative = true;
+      text = text.substring(1);
+    }
+    if (text.contains('-')) return oldValue;
+    if (text.isEmpty) {
+      return const TextEditingValue(
+        text: '-',
+        selection: TextSelection.collapsed(offset: 1),
+      );
+    }
 
     // Only one decimal separator.
     final firstDot = text.indexOf('.');
@@ -35,6 +51,8 @@ class AmountInputFormatter extends TextInputFormatter {
       if (parts[0].isEmpty) parts[0] = '0';
       text = parts.join('.');
     }
+
+    if (negative) text = '-$text';
 
     if (text == newValue.text) return newValue;
 

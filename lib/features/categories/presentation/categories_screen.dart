@@ -16,6 +16,7 @@ import '../../../data/models/category.dart';
 import '../../../data/models/transaction_type.dart';
 import '../../dashboard/application/dashboard_providers.dart';
 import '../../dashboard/domain/dashboard_summary.dart';
+import '../../dashboard/presentation/widgets/account_view_button.dart';
 import '../../households/application/household_providers.dart';
 import '../application/category_providers.dart';
 import 'category_form_sheet.dart';
@@ -36,7 +37,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     final scheme = theme.colorScheme;
     final colors = context.appColors;
     final categories = ref.watch(categoriesByTypeProvider(_type));
-    final summary = ref.watch(dashboardSummaryProvider);
+    final summary = ref.watch(homeSummaryProvider);
     final month = ref.watch(selectedMonthProvider);
     final currency = ref.watch(currencyProvider);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -49,7 +50,9 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Categories'),
+        title: AccountViewButton(
+          style: theme.textTheme.titleLarge,
+        ),
         actions: [
           IconButton(
             tooltip: 'New category',
@@ -88,10 +91,10 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                 const SizedBox(width: 8),
                 MonthChip(
                   value: month,
+                  allowAll: true,
                   compact: true,
-                  onChanged: (value) {
-                    if (value != null) ref.read(selectedMonthProvider.notifier).select(value);
-                  },
+                  onChanged: (value) =>
+                      ref.read(selectedMonthProvider.notifier).select(value),
                 ),
               ],
             ),
@@ -149,7 +152,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Total ${_type.label.toLowerCase()} · ${month.shortLabel}',
+                                  'Total ${_type.label.toLowerCase()} · ${month?.shortLabel ?? 'All time'}',
                                   style: theme.textTheme.labelLarge?.copyWith(
                                     color: scheme.onSurfaceVariant,
                                   ),

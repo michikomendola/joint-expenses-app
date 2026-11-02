@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/feedback.dart';
@@ -12,6 +13,7 @@ import '../../authentication/application/auth_providers.dart';
 import '../../households/application/household_providers.dart';
 import '../application/settings_providers.dart';
 import 'invite_member_sheet.dart';
+import 'privacy_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -224,6 +226,24 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
 
+          // ------------------------------------------------------------- Privacy
+          _Section(
+            title: 'Privacy',
+            children: [
+              ListTile(
+                leading: const Icon(Icons.privacy_tip_outlined),
+                title: const Text('Privacy'),
+                subtitle: const Text('What is saved, and how statement files are opened'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+
           // ------------------------------------------------------------ Account
           _Section(
             title: 'Account',
@@ -244,6 +264,12 @@ class SettingsScreen extends ConsumerWidget {
                   }
                 },
               ),
+              ListTile(
+                leading: Icon(Icons.delete_forever_rounded, color: scheme.error),
+                title: Text('Delete account', style: TextStyle(color: scheme.error)),
+                subtitle: const Text('Removes your sign-in and personal records'),
+                onTap: () => _deleteAccount(context, ref),
+              ),
             ],
           ),
           const SizedBox(height: AppConstants.spaceMd),
@@ -256,6 +282,20 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'Delete your account?',
+      message:
+          'This permanently deletes your sign-in, name, and email. If you are the only member, the household and its records are deleted too. If a partner is still a member, the household stays with them. Expenses marked personal to you are deleted. Shared expenses stay.',
+      confirmLabel: 'Delete account',
+    );
+    if (!confirmed || !context.mounted) return;
+    final ok = await ref.read(authControllerProvider.notifier).deleteAccount();
+    if (!context.mounted || ok) return;
+    AppSnackBar.error(context, ref.read(authControllerProvider).error!);
   }
 
   Future<void> _editText(
@@ -311,6 +351,7 @@ class SettingsScreen extends ConsumerWidget {
                 groupValue: household.currency,
                 onChanged: (value) => Navigator.of(context).pop(value),
                 child: ListView(
+                  padding: EdgeInsets.only(bottom: sheetBottomPadding(context)),
                   children: [
                     for (final c in CurrencyFormatter.supported)
                       RadioListTile<String>(

@@ -36,6 +36,9 @@ flutter pub get
    | `20260101000001_rls_policies.sql` | RLS on every table + `SECURITY DEFINER` membership helpers |
    | `20260101000002_functions.sql` | RPCs: `create_household`, `create_household_invite`, `join_household_with_invite`, `reassign_and_delete_category`, default category seeding |
    | `20260101000003_realtime.sql` | `REPLICA IDENTITY FULL` + adds tables to the `supabase_realtime` publication |
+   | `20260101000006_fix_household_invite.sql` | Makes invite codes work when pgcrypto is not in the `extensions` schema |
+   | `20260101000007_fix_invite_expires_at.sql` | Fixes ambiguous `expires_at` when generating an invite code |
+   | `20260101000009_payment_method.sql` | Mode of payment on transactions (cash / CC / GCash / Maya / SeaBank / other) |
 
    Either paste each file into **SQL Editor → New query → Run**, or with the CLI:
 
@@ -273,7 +276,36 @@ through Realtime.
    invite code if they are not already housemates, and removes the rows it
    created when it finishes. Without the dart-defines the test is skipped.
 
-## 8. Design notes & decisions
+## 8. Credit card statement import (BPI)
+
+Apply the new migrations after the original four:
+
+- `20260101000004_statement_import.sql`
+- `20260101000005_statement_import_rpc.sql`
+- `20260101000006_fix_household_invite.sql`
+- `20260101000007_fix_invite_expires_at.sql`
+
+Then rebuild the APK so the new screens are included.
+
+**In the app:** Transactions → upload icon → choose a BPI SOA PDF → review →
+assign Personal or Joint → Import reviewed expenses.
+
+Rules the parser enforces:
+
+- Transaction Date is the expense date, never Post Date.
+- Payments, reversals, balances and the Installment Balance Summary are not
+  imported as new spending.
+- `08/24` means installment 8 of 24, not August 24.
+- Several The Loop plans stay separate when monthly amounts differ.
+- Only the monthly installment is an expense. Remaining balance is tracking.
+- Joint expenses have `assigned_user_id = NULL` and are counted once.
+
+Parsing runs **on the device** from PDF content-stream positions. The optional
+Python service in `parser/` is documented if you later want a server-side or
+OCR path. Bank statements are never committed; put a local copy in
+`test_fixtures/bpi_soa_sample.pdf` (git-ignored).
+
+## 9. Design notes & decisions
 
 - **“Paid by / Received by” is read-only.** The spec asked for it to be
   editable, but it also requires that “users can only create transactions as
@@ -288,7 +320,7 @@ through Realtime.
   separators and two decimals built from integer parts.
 - **Theme**: light by default, dark available, preference persisted locally.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |

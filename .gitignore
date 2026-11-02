@@ -54,3 +54,9 @@ env.test.json
 env.*.json
 !env.example.json
 !env.test.example.json
+
+# Bank statements and extracted PII. Only the README in this folder is public.
+test_fixtures/**
+!test_fixtures/README.md
+parser/tests/fixtures/**
+!parser/tests/fixtures/README.md

@@ -58,6 +58,17 @@ class AuthRepository {
 
   Future<void> signOut() => _client.auth.signOut();
 
+  /// Deletes the signed-in auth user and the personal data attached to them.
+  /// The database function keeps a shared household for any remaining member.
+  Future<void> deleteAccount() async {
+    await _client.rpc('delete_own_account');
+    try {
+      await _client.auth.signOut();
+    } catch (_) {
+      await _client.auth.signOut(scope: SignOutScope.local);
+    }
+  }
+
   Future<Profile?> fetchProfile(String userId) async {
     final row = await _client
         .from('profiles')

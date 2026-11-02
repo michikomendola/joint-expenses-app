@@ -74,6 +74,7 @@ class DashboardSummary {
   const DashboardSummary({
     required this.totalIncome,
     required this.totalExpense,
+    required this.jointExpense,
     required this.memberTotals,
     required this.expenseByCategory,
     required this.incomeByCategory,
@@ -84,6 +85,7 @@ class DashboardSummary {
   static const DashboardSummary empty = DashboardSummary(
     totalIncome: Money.zero,
     totalExpense: Money.zero,
+    jointExpense: Money.zero,
     memberTotals: [],
     expenseByCategory: [],
     incomeByCategory: [],
@@ -93,7 +95,14 @@ class DashboardSummary {
 
   final Money totalIncome;
   final Money totalExpense;
+
+  /// Expenses classified Joint. Never counted in either personal total.
+  final Money jointExpense;
   final List<MemberTotal> memberTotals;
+
+  /// Personal expenses only (sum of [memberTotals.expense]).
+  Money get personalExpense =>
+      memberTotals.fold<Money>(Money.zero, (sum, m) => sum + m.expense);
 
   /// Sorted by amount, descending.
   final List<CategorySlice> expenseByCategory;
@@ -133,11 +142,13 @@ abstract final class DashboardCalculator {
     required Map<String, CategoryModel> categories,
     Map<String, String> memberNames = const {},
     int recentCount = 5,
+    bool attributeJointExpensesToPayer = false,
   }) {
     if (transactions.isEmpty) return DashboardSummary.empty;
 
     var totalIncome = Money.zero;
     var totalExpense = Money.zero;
+    var jointExpense = Money.zero;
     final incomeByUser = <String, Money>{};
     final expenseByUser = <String, Money>{};
     final expenseByCategory = <String, Money>{};
@@ -158,7 +169,15 @@ abstract final class DashboardCalculator {
             (incomeByCategory[t.categoryId] ?? Money.zero) + t.amount;
       } else {
         totalExpense += t.amount;
-        expenseByUser[t.userId] = (expenseByUser[t.userId] ?? Money.zero) + t.amount;
+        if (t.isJoint) {
+          jointExpense += t.amount;
+          if (attributeJointExpensesToPayer) {
+            expenseByUser[t.userId] = (expenseByUser[t.userId] ?? Money.zero) + t.amount;
+          }
+        } else {
+          final owner = t.expenseOwnerId ?? t.userId;
+          expenseByUser[owner] = (expenseByUser[owner] ?? Money.zero) + t.amount;
+        }
         expenseByCategory[t.categoryId] =
             (expenseByCategory[t.categoryId] ?? Money.zero) + t.amount;
       }
@@ -186,6 +205,7 @@ abstract final class DashboardCalculator {
     return DashboardSummary(
       totalIncome: totalIncome,
       totalExpense: totalExpense,
+      jointExpense: jointExpense,
       memberTotals: memberTotals,
       expenseByCategory: _slices(
         totals: expenseByCategory,

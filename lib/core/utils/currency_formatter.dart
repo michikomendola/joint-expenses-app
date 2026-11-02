@@ -54,12 +54,14 @@ abstract final class CurrencyFormatter {
   }
 
   /// `+ ₱30,000.00` / `- ₱1,200.00` for transaction lists.
+  /// A negative expense is a refund, so it is shown as money coming back.
   static String formatSigned(
     Money money, {
     required String currency,
     required bool isIncome,
   }) {
-    final prefix = isIncome ? '+ ' : '- ';
+    final credit = isIncome ? !money.isNegative : money.isNegative;
+    final prefix = credit ? '+ ' : '- ';
     return '$prefix${symbol(currency)}${_digits(money.abs)}';
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/state_views.dart';
@@ -42,7 +43,7 @@ class _InviteMemberSheetState extends ConsumerState<InviteMemberSheet> {
     final householdName = ref.watch(currentHouseholdProvider).value?.name ?? 'your household';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: EdgeInsets.fromLTRB(20, 0, 20, sheetBottomPadding(context)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

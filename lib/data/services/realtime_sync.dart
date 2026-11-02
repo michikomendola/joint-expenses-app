@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/categories/application/category_providers.dart';
+import '../../features/dashboard/application/joint_budget_providers.dart';
 import '../../features/households/application/household_providers.dart';
 import '../../features/transactions/application/transaction_providers.dart';
 import '../models/household.dart';
@@ -69,6 +70,13 @@ class _RealtimeSync {
           callback: (_) => _schedule('members'),
         )
         .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'joint_budget_settlements',
+          filter: filter,
+          callback: (_) => _schedule('shares'),
+        )
+        .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
           table: 'households',
@@ -90,6 +98,7 @@ class _RealtimeSync {
           _schedule('transactions');
           _schedule('categories');
           _schedule('members');
+          _schedule('shares');
         }
         _subscribedOnce = true;
       }
@@ -132,6 +141,9 @@ class _RealtimeSync {
     if (tables.contains('members')) {
       _ref.invalidate(householdMembersProvider);
     }
+    if (tables.contains('shares')) {
+      _ref.invalidate(jointBudgetSharesProvider);
+    }
   }
 
   void dispose() {
@@ -150,4 +162,5 @@ void refreshHouseholdData(WidgetRef ref) {
   ref.invalidate(monthTransactionsProvider);
   ref.invalidate(categoriesProvider);
   ref.invalidate(householdMembersProvider);
+  ref.invalidate(jointBudgetSharesProvider);
 }

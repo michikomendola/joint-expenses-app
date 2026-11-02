@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../constants/app_constants.dart';
 import '../utils/date_utils.dart';
+import '../utils/system_insets.dart';
 
 /// Compact chip that shows the selected month and opens the picker.
 class MonthChip extends StatelessWidget {
@@ -84,6 +85,7 @@ class MonthPickerSheet extends StatefulWidget {
     return showModalBottomSheet<MonthSelection>(
       context: context,
       useSafeArea: true,
+      isScrollControlled: true,
       builder: (_) => MonthPickerSheet(initial: initial, allowAll: allowAll),
     );
   }
@@ -93,6 +95,10 @@ class MonthPickerSheet extends StatefulWidget {
 }
 
 class _MonthPickerSheetState extends State<MonthPickerSheet> {
+  /// The shell paints its NavigationBar over this sheet, so the month grid
+  /// needs empty space underneath or the last row sits behind Home / Transactions.
+  static const double _navClearance = 80;
+
   late int _year = (widget.initial ?? YearMonth.now()).year;
 
   @override
@@ -102,7 +108,12 @@ class _MonthPickerSheetState extends State<MonthPickerSheet> {
     final now = YearMonth.now();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        sheetBottomPadding(context, base: 12 + _navClearance),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -128,6 +139,28 @@ class _MonthPickerSheetState extends State<MonthPickerSheet> {
                 onPressed: _year < now.year + 1 ? () => setState(() => _year++) : null,
                 icon: const Icon(Icons.chevron_right_rounded),
                 tooltip: 'Next year',
+              ),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spaceSm),
+          Row(
+            children: [
+              if (widget.allowAll)
+                Expanded(
+                  child: _PickerAction(
+                    label: 'All time',
+                    selected: widget.initial == null,
+                    onTap: () =>
+                        Navigator.of(context).pop(const MonthSelection(null)),
+                  ),
+                ),
+              if (widget.allowAll) const SizedBox(width: 8),
+              Expanded(
+                child: _PickerAction(
+                  label: 'This month',
+                  tonal: true,
+                  onTap: () => Navigator.of(context).pop(MonthSelection(now)),
+                ),
               ),
             ],
           ),
@@ -174,29 +207,54 @@ class _MonthPickerSheetState extends State<MonthPickerSheet> {
               );
             },
           ),
-          const SizedBox(height: AppConstants.spaceMd),
-          Row(
-            children: [
-              if (widget.allowAll)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () =>
-                        Navigator.of(context).pop(const MonthSelection(null)),
-                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46)),
-                    child: const Text('All time'),
-                  ),
-                ),
-              if (widget.allowAll) const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => Navigator.of(context).pop(MonthSelection(now)),
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 46)),
-                  child: const Text('This month'),
-                ),
-              ),
-            ],
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _PickerAction extends StatelessWidget {
+  const _PickerAction({
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+    this.tonal = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+  final bool tonal;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final background = selected
+        ? scheme.primary
+        : tonal
+            ? scheme.secondaryContainer
+            : scheme.surfaceContainer;
+    final foreground = selected ? scheme.onPrimary : scheme.onSurface;
+
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+        onTap: onTap,
+        child: SizedBox(
+          height: 46,
+          child: Center(
+            child: Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: foreground,
+                fontWeight: selected ? FontWeight.w700 : null,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

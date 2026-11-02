@@ -12,6 +12,8 @@ abstract final class AppRoutes {
 
   static const String home = '/';
   static const String transactions = '/transactions';
+  static const String statementImport = '/transactions/import-statement';
+  static const String statementReview = '/transactions/import-statement/review';
   static const String categories = '/categories';
   static const String settings = '/settings';
 }

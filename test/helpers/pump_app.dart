@@ -11,6 +11,8 @@ import 'package:joint_expenses/data/models/transaction.dart';
 import 'package:joint_expenses/data/services/realtime_sync.dart';
 import 'package:joint_expenses/features/authentication/application/auth_providers.dart';
 import 'package:joint_expenses/features/categories/application/category_providers.dart';
+import 'package:joint_expenses/data/models/joint_budget_share.dart';
+import 'package:joint_expenses/features/dashboard/application/joint_budget_providers.dart';
 import 'package:joint_expenses/features/households/application/household_providers.dart';
 import 'package:joint_expenses/features/transactions/application/transaction_providers.dart';
 
@@ -36,6 +38,7 @@ Future<void> pumpApp(
   List<CategoryModel> categories = Fixtures.categories,
   List<HouseholdMember> members = const [],
   List<TransactionModel>? transactions,
+  List<JointBudgetShare> shares = const [],
   Size size = const Size(390, 844),
 }) async {
   await initializeDateFormatting();
@@ -58,6 +61,7 @@ Future<void> pumpApp(
                 ? transactions
                 : transactions.where((t) => month.contains(t.transactionDate)).toList(),
           ),
+        jointBudgetSharesProvider.overrideWith((ref) async => shares),
         ...overrides,
       ],
       child: MaterialApp(

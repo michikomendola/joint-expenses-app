@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/category_icons.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/category_icon_badge.dart';
 import '../../../core/widgets/feedback.dart';
@@ -159,7 +160,7 @@ class _CategoryFormSheetState extends ConsumerState<CategoryFormSheet> {
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: SingleChildScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          padding: EdgeInsets.fromLTRB(20, 0, 20, sheetBottomPadding(context)),
           child: Form(
             key: _formKey,
             autovalidateMode: AutovalidateMode.onUserInteraction,

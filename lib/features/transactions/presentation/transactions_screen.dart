@@ -1,22 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/category_icon_badge.dart';
 import '../../../core/widgets/month_picker.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/state_views.dart';
+import '../../../data/models/joint_budget_share.dart';
+import '../../../data/models/transaction.dart';
 import '../../../data/models/transaction_type.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../categories/application/category_providers.dart';
 import '../../categories/presentation/category_picker_sheet.dart';
+import '../../dashboard/application/account_view_provider.dart';
+import '../../dashboard/application/joint_budget_providers.dart';
+import '../../dashboard/domain/home_account_view.dart';
+import '../../dashboard/presentation/share_deficit_sheet.dart';
+import '../../dashboard/presentation/widgets/account_view_button.dart';
+import '../../dashboard/presentation/widgets/shared_deficit_tile.dart';
 import '../../households/application/household_providers.dart';
 import '../application/transaction_providers.dart';
 import '../domain/transaction_filter.dart';
+import 'transaction_actions.dart';
 import 'transaction_detail_sheet.dart';
 import 'transaction_form_sheet.dart';
 import 'widgets/transaction_tile.dart';
@@ -57,7 +69,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   @override
   Widget build(BuildContext context) {
     final filter = ref.watch(transactionFilterProvider);
+    final view = ref.watch(homeAccountViewProvider);
     final grouped = ref.watch(groupedTransactionsProvider);
+    final shares = ref.watch(jointBudgetSharesProvider).value ?? const [];
     final currency = ref.watch(currencyProvider);
     final userId = ref.watch(currentUserIdProvider);
     final theme = Theme.of(context);
@@ -83,8 +97,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 style: theme.textTheme.bodyLarge,
                 onChanged: ref.read(transactionFilterProvider.notifier).setQuery,
               )
-            : const Text('Transactions'),
+            : AccountViewButton(style: theme.textTheme.titleLarge),
         actions: [
+          IconButton(
+            tooltip: 'Import credit card statement',
+            onPressed: () => context.push(AppRoutes.statementImport),
+            icon: const Icon(Icons.upload_file_outlined),
+          ),
           IconButton(
             tooltip: _searching ? 'Close search' : 'Search',
             onPressed: _toggleSearch,
@@ -142,7 +161,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               : Icons.receipt_long_rounded,
                           title: filter.hasActiveFilters
                               ? 'No matching transactions'
-                              : 'No transactions yet',
+                              : (view == HomeAccountView.joint
+                                  ? 'No joint transactions yet'
+                                  : 'No personal transactions yet'),
                           message: filter.hasActiveFilters
                               ? 'Try clearing a filter or choosing another month.'
                               : 'Tap + to record your first income or expense.',
@@ -166,6 +187,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   }
 
                   final totals = _PeriodTotals.from(groups);
+                  final visibleShares = view == HomeAccountView.joint && !filter.hasActiveFilters
+                      ? shares.where((s) {
+                          return filter.month == null ||
+                              filter.month!.contains(s.sharedAt);
+                        }).toList()
+                      : <JointBudgetShare>[];
                   return ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(
                       parent: BouncingScrollPhysics(),
@@ -176,7 +203,29 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     itemCount: groups.length + 1,
                     itemBuilder: (context, index) {
                       if (index == 0) {
-                        return _TotalsStrip(totals: totals, currency: currency);
+                        return Column(
+                          children: [
+                            _TotalsStrip(totals: totals, currency: currency),
+                            for (final share in visibleShares)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: AppConstants.spaceMd),
+                                child: AppCard(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
+                                  child: SharedDeficitTile(
+                                    share: share,
+                                    currency: currency,
+                                    onTap: () => SharedDeficitDetailSheet.show(
+                                      context,
+                                      share,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
                       }
                       final group = groups[index - 1];
                       return Padding(
@@ -215,6 +264,20 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                       transaction: group.items[i],
                                       currency: currency,
                                       isMine: group.items[i].userId == userId,
+                                      onTogglePaid: group.items[i].isJoint
+                                          ? () => _togglePaid(ref, group.items[i])
+                                          : null,
+                                      onEdit: () => TransactionActions.edit(
+                                        context,
+                                        group.items[i],
+                                        userId: userId,
+                                      ),
+                                      onDelete: () => TransactionActions.delete(
+                                        context,
+                                        ref,
+                                        group.items[i],
+                                        userId: userId,
+                                      ),
                                       onTap: () => TransactionDetailSheet.show(
                                         context,
                                         group.items[i],
@@ -238,6 +301,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _togglePaid(WidgetRef ref, TransactionModel transaction) async {
+    final ok = await ref.read(transactionControllerProvider.notifier).setJointPaid(
+          transaction.id,
+          paid: !transaction.isJointPaid,
+        );
+    if (!mounted) return;
+    if (!ok) {
+      AppSnackBar.error(context, ref.read(transactionControllerProvider).error);
+    }
   }
 
   String _netLabel(TransactionGroup group, String currency) {
@@ -371,6 +445,7 @@ class _FilterBar extends ConsumerWidget {
     final members = ref.watch(householdMembersProvider).value ?? const [];
     final scheme = Theme.of(context).colorScheme;
 
+    final view = ref.watch(homeAccountViewProvider);
     final selectedCategory = filter.categoryId == null ? null : categories[filter.categoryId!];
 
     return SizedBox(
@@ -392,6 +467,17 @@ class _FilterBar extends ConsumerWidget {
               (f) => type == null ? f.copyWith(clearType: true) : f.copyWith(type: type),
             ),
           ),
+          if (view == HomeAccountView.joint) ...[
+            const SizedBox(width: 8),
+            _PaidFilterChips(
+              value: filter.jointPaid,
+              onChanged: (value) => notifier.update(
+                (f) => value == JointPaidFilter.all
+                    ? f.copyWith(clearJointPaid: true)
+                    : f.copyWith(jointPaid: value),
+              ),
+            ),
+          ],
           const SizedBox(width: 8),
           FilterChip(
             selected: selectedCategory != null,
@@ -424,7 +510,7 @@ class _FilterBar extends ConsumerWidget {
             deleteIcon: const Icon(Icons.close_rounded, size: 16),
           ),
           const SizedBox(width: 8),
-          if (members.length > 1)
+          if (view == HomeAccountView.joint && members.length > 1)
             PopupMenuButton<String?>(
               tooltip: 'Filter by member',
               onSelected: (value) => notifier.update(
@@ -455,6 +541,38 @@ class _FilterBar extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _PaidFilterChips extends StatelessWidget {
+  const _PaidFilterChips({required this.value, required this.onChanged});
+
+  final JointPaidFilter value;
+  final ValueChanged<JointPaidFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Row(
+      children: [
+        ChoiceChip(
+          label: const Text('Unpaid'),
+          selected: value == JointPaidFilter.unpaid,
+          onSelected: (_) => onChanged(
+            value == JointPaidFilter.unpaid ? JointPaidFilter.all : JointPaidFilter.unpaid,
+          ),
+        ),
+        const SizedBox(width: 6),
+        ChoiceChip(
+          label: const Text('Paid'),
+          selected: value == JointPaidFilter.paid,
+          selectedColor: colors.incomeContainer,
+          onSelected: (_) => onChanged(
+            value == JointPaidFilter.paid ? JointPaidFilter.all : JointPaidFilter.paid,
+          ),
+        ),
+      ],
     );
   }
 }

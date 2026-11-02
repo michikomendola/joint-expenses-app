@@ -101,7 +101,7 @@ grant execute on function public.create_household(text, text) to authenticated;
 -- are single-use and expire after 48 hours.
 -- ---------------------------------------------------------------------------
 create or replace function public.create_household_invite(p_household_id uuid)
-returns table (code text, expires_at timestamptz)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public, extensions
@@ -118,22 +118,24 @@ begin
     raise exception 'You are not a member of this household' using errcode = '42501';
   end if;
 
-  v_bytes := extensions.gen_random_bytes(10);
+  -- pgcrypto may live in public or extensions; search_path covers both.
+  v_bytes := gen_random_bytes(10);
   for i in 0..9 loop
     v_code := v_code || substr(v_alphabet, (get_byte(v_bytes, i) % 32) + 1, 1);
   end loop;
 
-  -- Invalidate older unused invites so only one code is live at a time.
-  update public.household_invites
+  -- Qualify columns: RETURNS TABLE used to expose expires_at as a PL/pgSQL
+  -- variable and made "expires_at" ambiguous against household_invites.
+  update public.household_invites as invites
      set expires_at = now()
-   where household_id = p_household_id
-     and used_at is null
-     and expires_at > now();
+   where invites.household_id = p_household_id
+     and invites.used_at is null
+     and invites.expires_at > now();
 
   insert into public.household_invites (household_id, created_by, token_hash, expires_at)
-  values (p_household_id, v_uid, encode(extensions.digest(v_code, 'sha256'), 'hex'), v_expires);
+  values (p_household_id, v_uid, encode(digest(convert_to(v_code, 'UTF8'), 'sha256'), 'hex'), v_expires);
 
-  return query select v_code, v_expires;
+  return jsonb_build_object('code', v_code, 'expires_at', v_expires);
 end;
 $$;
 
@@ -174,7 +176,7 @@ begin
 
   select * into v_invite
   from public.household_invites
-  where token_hash = encode(extensions.digest(v_code, 'sha256'), 'hex')
+  where token_hash = encode(digest(convert_to(v_code, 'UTF8'), 'sha256'), 'hex')
   for update;
 
   if not found then

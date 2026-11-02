@@ -5,6 +5,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/category_icon_badge.dart';
 import '../../../core/widgets/feedback.dart';
 import '../../../data/models/transaction.dart';
@@ -35,17 +36,23 @@ class TransactionDetailSheet extends ConsumerWidget {
     final currency = ref.watch(currencyProvider);
     final isMine = ref.watch(currentUserIdProvider) == transaction.userId;
     final t = transaction;
-    final accent = t.isIncome ? colors.income : colors.expense;
+    final credit = t.isIncome ? !t.amount.isNegative : t.amount.isNegative;
+    final accent = credit ? colors.income : colors.expense;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, sheetBottomPadding(context)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              CategoryIconBadge(iconKey: t.category?.icon, colorHex: t.category?.color, size: 52),
+              CategoryIconBadge(
+                iconKey: t.category?.icon,
+                colorHex: t.category?.color,
+                size: 52,
+                paid: t.isJointPaid,
+              ),
               const SizedBox(width: AppConstants.spaceMd),
               Expanded(
                 child: Column(
@@ -79,12 +86,43 @@ class TransactionDetailSheet extends ConsumerWidget {
             label: t.type.actorLabel,
             value: isMine ? 'You (${t.userDisplayName ?? 'me'})' : (t.userDisplayName ?? 'Member'),
           ),
+          if (t.isExpense)
+            _DetailRow(
+              icon: Icons.payments_outlined,
+              label: 'Mode of payment',
+              value: t.paymentMethod.label,
+            ),
           if (t.createdAt != null)
             _DetailRow(
               icon: Icons.schedule_rounded,
               label: 'Added',
               value: AppDateUtils.mediumDate(t.createdAt!),
             ),
+          if (t.isJoint) ...[
+            const SizedBox(height: AppConstants.spaceMd),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final ok = await ref
+                    .read(transactionControllerProvider.notifier)
+                    .setJointPaid(t.id, paid: !t.isJointPaid);
+                if (!context.mounted) return;
+                if (ok) {
+                  AppSnackBar.success(
+                    context,
+                    t.isJointPaid ? 'Marked unpaid' : 'Marked paid',
+                  );
+                  Navigator.of(context).pop();
+                } else {
+                  AppSnackBar.error(
+                    context,
+                    ref.read(transactionControllerProvider).error,
+                  );
+                }
+              },
+              icon: Icon(t.isJointPaid ? Icons.close_rounded : Icons.check_rounded),
+              label: Text(t.isJointPaid ? 'Mark unpaid' : 'Mark paid'),
+            ),
+          ],
           const SizedBox(height: AppConstants.spaceLg),
           if (isMine)
             Row(

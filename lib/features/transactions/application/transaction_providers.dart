@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/date_utils.dart';
+import '../../../data/models/expense_scope.dart';
 import '../../../data/models/transaction.dart';
+import '../../../data/repositories/statement_repository.dart';
 import '../../../data/repositories/transaction_repository.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../categories/application/category_providers.dart';
+import '../../dashboard/application/account_view_provider.dart';
+import '../../dashboard/domain/home_account_view.dart';
 import '../../households/application/household_providers.dart';
 import '../domain/transaction_filter.dart';
 
@@ -52,10 +56,21 @@ class TransactionFilterNotifier extends Notifier<TransactionFilter> {
 }
 
 /// Filtered + sorted transactions for the Transactions screen.
+/// Always limited to the shared joint or personal view.
 final filteredTransactionsProvider = Provider<AsyncValue<List<TransactionModel>>>((ref) {
   final filter = ref.watch(transactionFilterProvider);
+  final view = ref.watch(homeAccountViewProvider);
+  final userId = ref.watch(currentUserIdProvider);
   final source = ref.watch(monthTransactionsProvider(filter.month));
-  return source.whenData(filter.apply);
+  // Personal is already "mine". Member and paid chips only apply to joint.
+  final effective = view == HomeAccountView.personal
+      ? filter.copyWith(clearUser: true, clearJointPaid: true)
+      : filter;
+  return source.whenData(
+    (rows) => effective.apply(
+      transactionsForHomeView(transactions: rows, view: view, userId: userId),
+    ),
+  );
 });
 
 /// Grouped by day for rendering.
@@ -93,8 +108,34 @@ class TransactionController extends AutoDisposeAsyncNotifier<void> {
 
   Future<bool> edit(String id, TransactionInput input) async {
     if (_busy) return false;
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return false;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() => _repo.update(id, input));
+    state = await AsyncValue.guard(() => _repo.update(id, input, userId: userId));
+    if (!state.hasError) _refreshData();
+    return !state.hasError;
+  }
+
+  Future<bool> classify(String id, ExpenseScope scope, {String? assignedUserId}) async {
+    if (_busy) return false;
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => ref.read(statementRepositoryProvider).updateClassification(
+            transactionId: id,
+            scope: scope.dbValue,
+            assignedUserId: assignedUserId,
+          ),
+    );
+    if (!state.hasError) _refreshData();
+    return !state.hasError;
+  }
+
+  Future<bool> setJointPaid(String id, {required bool paid}) async {
+    if (_busy) return false;
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => _repo.setJointPaid(id, paid: paid),
+    );
     if (!state.hasError) _refreshData();
     return !state.hasError;
   }

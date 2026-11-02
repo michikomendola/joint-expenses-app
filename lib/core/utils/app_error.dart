@@ -67,12 +67,25 @@ abstract final class AppError {
         return 'This item is still referenced by other records.';
       case '23514':
         return 'Some of the values were not valid.';
+      case 'PGRST202':
+        return 'This feature is not set up on the server yet. Run the latest SQL migrations.';
+      case '42883':
+        return 'The server is missing a required database function. Run the latest SQL migrations.';
       case 'PGRST301':
       case 'PGRST302':
         return 'Your session has expired. Please sign in again.';
     }
-    if (raw.toLowerCase().contains('jwt')) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('jwt')) {
       return 'Your session has expired. Please sign in again.';
+    }
+    if (lower.contains('schema cache') ||
+        lower.contains('does not exist') ||
+        lower.contains('undefined function')) {
+      return 'The server is missing a required database function. Run the latest SQL migrations.';
+    }
+    if (raw.isNotEmpty && raw.length <= 180 && !raw.contains('PGRST')) {
+      return raw;
     }
     return 'The server rejected the request. Please try again.';
   }

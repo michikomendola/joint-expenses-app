@@ -6,6 +6,9 @@ import '../../../data/models/transaction_type.dart';
 
 enum TransactionSort { newestFirst, oldestFirst }
 
+/// Joint-expense paid status. [all] leaves personal rows visible.
+enum JointPaidFilter { all, unpaid, paid }
+
 /// Filter state for the Transactions screen. Pure and testable.
 @immutable
 class TransactionFilter {
@@ -16,9 +19,10 @@ class TransactionFilter {
     this.month,
     this.query = '',
     this.sort = TransactionSort.newestFirst,
+    this.jointPaid = JointPaidFilter.all,
   });
 
-  factory TransactionFilter.initial() => TransactionFilter(month: YearMonth.now());
+  factory TransactionFilter.initial() => const TransactionFilter();
 
   /// null → all types.
   final TransactionType? type;
@@ -29,9 +33,14 @@ class TransactionFilter {
   final YearMonth? month;
   final String query;
   final TransactionSort sort;
+  final JointPaidFilter jointPaid;
 
   bool get hasActiveFilters =>
-      type != null || categoryId != null || userId != null || query.trim().isNotEmpty;
+      type != null ||
+      categoryId != null ||
+      userId != null ||
+      query.trim().isNotEmpty ||
+      jointPaid != JointPaidFilter.all;
 
   TransactionFilter copyWith({
     TransactionType? type,
@@ -44,6 +53,8 @@ class TransactionFilter {
     bool clearMonth = false,
     String? query,
     TransactionSort? sort,
+    JointPaidFilter? jointPaid,
+    bool clearJointPaid = false,
   }) {
     return TransactionFilter(
       type: clearType ? null : (type ?? this.type),
@@ -52,6 +63,7 @@ class TransactionFilter {
       month: clearMonth ? null : (month ?? this.month),
       query: query ?? this.query,
       sort: sort ?? this.sort,
+      jointPaid: clearJointPaid ? JointPaidFilter.all : (jointPaid ?? this.jointPaid),
     );
   }
 
@@ -68,6 +80,10 @@ class TransactionFilter {
       if (categoryId != null && t.categoryId != categoryId) return false;
       if (userId != null && t.userId != userId) return false;
       if (month != null && !month!.contains(t.transactionDate)) return false;
+      if (jointPaid == JointPaidFilter.unpaid && !(t.isJoint && !t.isJointPaid)) {
+        return false;
+      }
+      if (jointPaid == JointPaidFilter.paid && !t.isJointPaid) return false;
       if (needle.isNotEmpty) {
         final haystack = [
           t.description ?? '',
@@ -98,10 +114,11 @@ class TransactionFilter {
       other.userId == userId &&
       other.month == month &&
       other.query == query &&
-      other.sort == sort;
+      other.sort == sort &&
+      other.jointPaid == jointPaid;
 
   @override
-  int get hashCode => Object.hash(type, categoryId, userId, month, query, sort);
+  int get hashCode => Object.hash(type, categoryId, userId, month, query, sort, jointPaid);
 }
 
 /// A date header with the transactions that fall on that day.

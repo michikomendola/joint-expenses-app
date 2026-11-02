@@ -109,8 +109,22 @@ class HouseholdInvite {
 
   factory HouseholdInvite.fromJson(Map<String, dynamic> json) => HouseholdInvite(
         code: json['code'] as String,
-        expiresAt: DateTime.parse(json['expires_at'] as String).toLocal(),
+        expiresAt: DateTime.parse(json['expires_at'].toString()).toLocal(),
       );
+
+  /// PostgREST may return a table row as a list or a single map.
+  factory HouseholdInvite.fromRpc(dynamic raw) {
+    if (raw is List) {
+      if (raw.isEmpty) {
+        throw const FormatException('Could not create an invite');
+      }
+      return HouseholdInvite.fromJson(Map<String, dynamic>.from(raw.first as Map));
+    }
+    if (raw is Map) {
+      return HouseholdInvite.fromJson(Map<String, dynamic>.from(raw));
+    }
+    throw const FormatException('Could not create an invite');
+  }
 
   final String code;
   final DateTime expiresAt;
